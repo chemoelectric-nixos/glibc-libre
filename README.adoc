@@ -43,7 +43,7 @@ you employ command line switches to say where +/etc/ld.so.conf+ and
 +/etc/ld.so.cache+ are. *Glibc-libre*, however, comes with a repaired
 *ldconfig* executable, which does not require command line switches.
 You will find it in any of the following places:
-[source,nix]
+[source]
 ----
 ${pkgs.libre.bin}/bin/ldconfig
 ${pkgs.libre.bin}/bin/ldconfig-libre
