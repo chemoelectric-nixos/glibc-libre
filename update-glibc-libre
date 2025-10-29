@@ -1,0 +1,227 @@
+#!/usr/bin/env nix-shell
+#! nix-shell -i zsh -p zsh gnutar xz git cacert coreutils nawk nixfmt-rfc-style --pure
+#
+# Copyright © 2025 Barry Schwartz
+#
+# This program is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License, as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received copies of the GNU General Public License
+# along with this program. If not, see
+# <https:#www.gnu.org/licenses/>.
+#
+
+set -e
+
+function stamp
+{
+    date +%Y.%m.%d.%H.%M.%S
+}
+
+function print_usage
+{
+    printf "Usage: ${0} BRANCH_OR_TAG\n"
+    printf "       ${0} -r REVISION\n"
+}
+
+if [[ $# != 1 ]] && [[ $# != 2 ]]; then
+    print_usage
+    exit 1
+fi
+
+branch=
+revision=
+if [[ $# = 1 ]]; then
+    branch="${1:?branch or tag not specified}"
+elif [[ "${1}" != "-r" ]]; then
+    print_usage
+    exit 1
+else
+    revision="${2:?revision not specified}"
+fi
+
+nixpkgs_url="https://github.com/NixOS/nixpkgs.git"
+glibc_subdir="pkgs/development/libraries/glibc"
+glibc_in_repo="nixpkgs/${glibc_subdir}"
+glibc_dir="glibc-libre/${glibc_in_repo}"
+
+function clone_the_repo
+{
+    if [[ -n "${branch}" ]]; then
+        git clone --depth=1 --branch="${branch}" "${nixpkgs_url}"
+    else
+        git clone --depth=1 --revision="${revision}" "${nixpkgs_url}"
+    fi
+}
+
+function make_a_backup
+{
+    if [[ -d glibc-libre ]]; then
+        tarball=glibc-libre.`stamp`.tar.xz~
+        tar --format=posix --acls --xattrs -czf "${tarball}" glibc-libre
+    fi
+}
+
+function awk_edit
+{
+    nawk "${1}" < "${2}" > "${2}".tmp && mv "${2}"{.tmp,}
+}
+
+function disable_nixonian_patch
+{
+    awk_edit '/\.\/dont-use-system-ld-so-cache\.patch/ {
+                print ("      # NOPE! Exert our freedom, instead.")
+                next
+              }
+              {
+                print
+              }
+             ' "${glibc_dir}"/common.nix
+}
+
+function install_ldconfig_for_sure
+{
+    awk_edit '{
+                print
+              }
+              /moveToOutput bin\/getent \$getent/ {
+                print ("")
+                print ("      # Be sure ldconfig is installed, and also install")
+                print ("      # it as ldconfig-libre. Output both ldconfig and")
+                print ("      # ldconfig-libre also as lone outputs. Some may")
+                print ("      # find this arrangement helpful for working around")
+                print ("      # problems.")
+                print ("      cp elf/ldconfig elf/ldconfig-libre")
+                print ("      install -d $bin/bin")
+                print ("      rm -f $bin/bin/ldconfig")
+                print ("      install elf/ldconfig $bin/bin")
+                print ("      install elf/ldconfig-libre $bin/bin")
+                print ("      install -d $ldconfig/bin")
+                print ("      install elf/ldconfig $ldconfig/bin")
+                print ("      install -d $ldconfig_libre/bin")
+                print ("      install elf/ldconfig-libre $ldconfig_libre/bin")
+              }
+              /      "getent"/ {  # FIXME: This edit could use more context.
+                print ("      \"ldconfig\"")
+                print ("      \"ldconfig_libre\"")
+              }
+             ' "${glibc_dir}"/common.nix
+}
+
+function edit_for_freedom
+{
+    disable_nixonian_patch
+    install_ldconfig_for_sure
+    nixfmt "${glibc_dir}"/common.nix
+}
+
+function write_nix_configuration
+{
+    local config="${1}"
+
+    if true; then
+        printf "{\n"
+        printf "  pkgs,\n"
+        printf "  ...\n"
+        printf "}:\n"
+        printf "\n"
+        printf "let\n"
+        printf "  glibc-libre = pkgs: (pkgs.callPackage %s %s);\n" \
+               "${glibc_in_repo}" "{ stdenv = pkgs.gccStdenv; }"
+        printf "in\n"
+        printf "{\n"
+        printf "  nixpkgs = {\n"
+        printf "    overlays = [\n"
+        printf "      ( final: prev: { libre = glibc-libre final.pkgs; } )"
+        printf "    ];\n"
+        printf "  };\n"
+        printf "  system = {\n"
+        printf "    replaceDependencies = {\n"
+        printf "      replacements = [\n"
+        printf "        {\n"
+        printf "          oldDependency = pkgs.glibc;\n"
+        printf "          newDependency = pkgs.libre;\n"
+        printf "        }\n"
+        printf "      ];\n"
+        printf "    };"
+        printf "  };\n"
+        printf "}\n"
+    fi > "${config}"
+
+    nixfmt "${config}"
+}
+
+function write_example_etc_config
+{
+    local config="${1}"
+
+    if true; then
+        printf "{\n"
+        printf "  pkgs,\n"
+        printf "  ...\n"
+        printf "}:\n"
+        printf "\n"
+        printf "let\n"
+        printf "  use-nix-ld = false;\n"
+        printf "in\n"
+        printf "{\n"
+        printf "  #\n"
+        printf "  # You can install either nix-ld or glibc-libre’s ELF\n"
+        printf "  # interpreter itself as the ‘standard’ ELF interpreter.\n"
+        printf "  # If you do not use nix-ld, then link or place libraries\n"
+        printf "  # you wish to use into a directory listed in\n"
+        printf "  # /etc/ld.so.conf and be sure to run ldconfig-libre.\n"
+        printf "  # Using glibc-libre directly avoids setting LD_LIBRARY_PATH.\n"
+        printf "  #\n"
+        printf "  programs.nix-ld = {\n"
+        printf "    enable = use-nix-ld;\n"
+        printf "    libraries = [ ]; # Put a list of packages here.\n"
+        printf "  };\n"
+        printf "  environment.ldso =\n"
+        printf "    if use-nix-ld then\n"
+        printf "      null\n"
+        printf "    else\n"
+        printf "      \"\${pkgs.libre}/lib/ld-linux-x86-64.so.2\";\n"
+        printf "\n"
+        printf "  system.activationScripts = {\n"
+        printf "    \"update-ld.so.cache\" = ''\n"
+        printf "      if ! [ -e /etc/ld.so.conf ]; then\n"
+        printf "        if true; then\n"
+        printf "          printf \"# Example /etc/ld.so.conf\\\\n\"\n"
+        printf "          printf \"\\\\n\"\n"
+        printf "          printf \"#/lib  <-- uncomment to include\\\\n\"\n"
+        printf "          printf \"#/usr/lib\\\\n\"\n"
+        printf "          printf \"#/usr/local/lib\\\\n\"\n"
+        printf "        fi > /etc/ld.so.conf\n"
+        printf "      fi\n"
+        printf "      \${pkgs.libre.bin}/bin/ldconfig-libre\n"
+        printf "    '';\n"
+        printf "  };\n"
+        printf "}\n"
+    fi > "${config}"
+
+    nixfmt "${config}"
+}
+
+make_a_backup
+rm -R -f glibc-libre
+mkdir -p glibc-libre
+(cd glibc-libre && clone_the_repo)
+edit_for_freedom
+
+write_nix_configuration "glibc-libre/libre-configuration.nix"
+write_example_etc_config "glibc-libre/libre-etc-config.example.nix"
+
+# local variables:
+# mode: shell-script
+# sh-shell: zsh
+# coding: utf-8
+# indent-tabs-mode: nil
+# end:

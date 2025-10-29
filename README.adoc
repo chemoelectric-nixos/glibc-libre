@@ -1,0 +1,56 @@
+= glibc-libre
+
+*Glibc-libre* is your _NixOS_ *glibc*, but with +/etc/ld.so.conf+ and
+ +/etc/ld.so.cache+ enabled. *Glibc-libre* will also cache its own
+ shared libraries, without any need to list them in +/etc/ld.so.conf+.
+
+To get +glibc-libre+, place the _nix-shell_ script
+*update-glibc-libre* in your _Nix_ configuration directory (such as
++/etc/nixos+) and make it executable. You can run it with a command like
+[source,sh]
+----
+./update-glibc-libre nixos-25.05
+----
+or
+[source,sh]
+----
+./update-glibc-libre -r 385bc60542f26c384d8fa17585e6447f1aa54fbf
+----
+This will create a subdirectory called +glibc-libre+. If there is
+already a +glibc-libre+, the script will make a backup tarball called
+something like +glibc-libre.2025.10.29.13.27.45.tar.xz~+, where the
+numbers are a timestamp.
+
+In the subdirectory there should be a depth-one clone of some portion
+of the _nixpkgs_ repository. There should also be two _Nix_ scripts.
+Import the +libre-configuration.nix+ script with something like the
+following:
+[source,nix]
+----
+imports = [
+  ./glibc-libre/libre-configuration.nix
+];
+----
+You may also wish to edit and include the
++libre-etc-config.example.nix+ script, or use it as a guide.
+
+Whether to edit +/etc/ld.so.conf+ directly or from your _Nix_
+configuration, or to create it by some other means, is of course up
+to you.
+
+Any of the *glibc* *ldconfig* executables on _NixOS_ can be used, if
+you employ command line switches to say where +/etc/ld.so.conf+ and
++/etc/ld.so.cache+ are. *Glibc-libre*, however, comes with a repaired
+*ldconfig* executable, which does not require command line switches.
+You will find it in any of the following places:
+[source,nix]
+----
+${pkgs.libre.bin}/bin/ldconfig
+${pkgs.libre.bin}/bin/ldconfig-libre
+${pkgs.libre.ldconfig}/bin/ldconfig
+${pkgs.libre.ldconfig_libre}/bin/ldconfig-libre
+----
+_NixOS_ has a way of putting an undesired executable ahead in your
+path, so persevere until you get it the way you want. Then become
+angry when it gets messed up again, but again fix it. Do not let
+Nixonian OS design stop you from fixing it.
