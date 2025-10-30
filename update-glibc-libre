@@ -20,6 +20,8 @@
 
 set -e
 
+program_name="${0}"
+
 function stamp
 {
     date +%Y.%m.%d.%H.%M.%S
@@ -27,11 +29,15 @@ function stamp
 
 function print_usage
 {
-    printf "Usage: ${0} BRANCH_OR_TAG\n"
-    printf "       ${0} -r REVISION\n"
+    printf "Usage: ${program_name} BRANCH_OR_TAG\n"
+    printf "       ${program_name} -r REVISION\n"
+    printf "       ${program_name}\n"
+    printf "\n"
+    printf "The third form updates an existing repository’s"
+    printf " current branch.\n"
 }
 
-if [[ $# != 1 ]] && [[ $# != 2 ]]; then
+if [[ 3 -le $# ]]; then
     print_usage
     exit 1
 fi
@@ -40,6 +46,8 @@ branch=
 revision=
 if [[ $# = 1 ]]; then
     branch="${1:?branch or tag not specified}"
+elif [[ $# = 0 ]]; then
+    :
 elif [[ "${1}" != "-r" ]]; then
     print_usage
     exit 1
@@ -47,18 +55,61 @@ else
     revision="${2:?revision not specified}"
 fi
 
+function want_repo_pull
+{
+    test -z "${branch}${revision}"
+}
+
+local_repo="/var/tmp/glibc-libre/nixpkgs"
 nixpkgs_url="https://github.com/NixOS/nixpkgs.git"
 glibc_subdir="pkgs/development/libraries/glibc"
-glibc_in_repo="nixpkgs/${glibc_subdir}"
-glibc_dir="glibc-libre/${glibc_in_repo}"
+glibc_in_local_repo="${local_repo}/${glibc_subdir}"
+glibc_dir="glibc-libre/glibc"
+abs_glibc_dir=`realpath ${PWD}`/"${glibc_dir}"
 
-function clone_the_repo
+function local_repo_specifier
 {
     if [[ -n "${branch}" ]]; then
-        git clone --depth=1 --branch="${branch}" "${nixpkgs_url}"
+        printf "--branch=%s" "${branch}"
     else
-        git clone --depth=1 --revision="${revision}" "${nixpkgs_url}"
+        printf "--revision=%s" "${revision}"
     fi
+}
+
+function clone_the_local_repo
+{
+    local dirnm=`dirname "${local_repo}"`
+    local basnm=`basename "${local_repo}"`
+    local spec=`local_repo_specifier`
+
+    mkdir -p "${dirnm}"
+    (cd "${dirnm}" &&
+         git clone --depth=1 "${spec}" "${nixpkgs_url}" "${basnm}")
+}
+
+function update_the_local_repo
+{
+    (cd "${local_repo}" && git pull --depth=1)
+}
+
+function require_the_local_repo
+{
+    if ! want_repo_pull; then
+        rm -R -f "${local_repo}"
+        clone_the_local_repo
+    elif [[ -d "${local_repo}" ]]; then
+        update_the_local_repo
+    else
+        print_usage
+        exit 1
+    fi
+}
+
+function obtain_the_glibc_derivation
+{
+    require_the_local_repo
+    mkdir -p "${abs_glibc_dir}"
+    cp -R "${glibc_in_local_repo}"/* "${abs_glibc_dir}"
 }
 
 function make_a_backup
@@ -83,7 +134,7 @@ function disable_nixonian_patch
               {
                 print
               }
-             ' "${glibc_dir}"/common.nix
+             ' "${abs_glibc_dir}"/common.nix
 }
 
 function install_ldconfig_for_sure
@@ -108,33 +159,34 @@ function install_ldconfig_for_sure
                 print ("      install -d $ldconfig_libre/bin")
                 print ("      install elf/ldconfig-libre $ldconfig_libre/bin")
               }
-              /      "getent"/ {  # FIXME: This edit could use more context.
+              /^[[:space:]]*"getent"/ {  # FIXME: This edit could use more context.
                 print ("      \"ldconfig\"")
                 print ("      \"ldconfig_libre\"")
               }
-             ' "${glibc_dir}"/common.nix
+             ' "${abs_glibc_dir}"/common.nix
 }
 
 function edit_for_freedom
 {
     disable_nixonian_patch
     install_ldconfig_for_sure
-    nixfmt "${glibc_dir}"/common.nix
+    nixfmt "${abs_glibc_dir}"/common.nix
 }
 
 function write_nix_configuration
 {
     local config="${1}"
+    local deriv_dir=`basename "${abs_glibc_dir}"`
 
     if true; then
-        printf "{\n"
-        printf "  pkgs,\n"
-        printf "  ...\n"
-        printf "}:\n"
+        printf "{ pkgs, ... }:\n"
         printf "\n"
         printf "let\n"
-        printf "  glibc-libre = pkgs: (pkgs.callPackage %s %s);\n" \
-               "${glibc_in_repo}" "{ stdenv = pkgs.gccStdenv; }"
+        printf "  glibc-libre =\n"
+        printf "    pkgs:\n"
+        printf "    (pkgs.callPackage %s {\n" ./"${deriv_dir}"
+        printf "      stdenv = pkgs.gccStdenv;\n"
+        printf "    });\n"
         printf "in\n"
         printf "{\n"
         printf "  nixpkgs = {\n"
@@ -210,14 +262,22 @@ function write_example_etc_config
     nixfmt "${config}"
 }
 
+printf "Backing up the previous version.\n"
 make_a_backup
+
+printf "Obtaining the glibc derivation.\n"
+printf "Local repository at %s\n" "${local_repo}"
 rm -R -f glibc-libre
-mkdir -p glibc-libre
-(cd glibc-libre && clone_the_repo)
+obtain_the_glibc_derivation
+
+printf "Editing for glibc-libre.\n"
 edit_for_freedom
 
+printf "Writing Nix configuration.\n"
 write_nix_configuration "glibc-libre/libre-configuration.nix"
 write_example_etc_config "glibc-libre/libre-etc-config.example.nix"
+
+printf "Done.\n"
 
 # local variables:
 # mode: shell-script
