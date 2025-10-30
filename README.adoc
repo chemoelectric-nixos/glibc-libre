@@ -1,8 +1,11 @@
 = glibc-libre
 
 *Glibc-libre* is your _NixOS_ *glibc*, but with +/etc/ld.so.conf+ and
- +/etc/ld.so.cache+ enabled. *Glibc-libre* will also cache its own
- shared libraries, without any need to list them in +/etc/ld.so.conf+.
++/etc/ld.so.cache+ enabled.footnote:[Almost the only thing necessary
+is not to apply a _NixOS_ patch whose only purpose is to take caching
+away from you.] *Glibc-libre* will also cache its own shared
+libraries, without any need to list them in +/etc/ld.so.conf+.
+
 
 To get +glibc-libre+, place the _nix-shell_ script
 *update-glibc-libre* in your _Nix_ configuration directory (such as
