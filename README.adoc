@@ -3,8 +3,10 @@
 *Glibc-libre* is your _NixOS_ *glibc*, but with +/etc/ld.so.conf+ and
 +/etc/ld.so.cache+ enabled.footnote:[Almost the only thing necessary
 is not to apply a _NixOS_ patch whose only purpose is to take caching
-away from you.] *Glibc-libre* will also cache its own shared
-libraries, without any need to list them in +/etc/ld.so.conf+.
+away from you. Anyone can disable caching _for themself_ with +chmod
+a-x ldconfig+, but that move is inadequate for someone to impose the
+disability on everyone else.] *Glibc-libre* will also cache its own
+shared libraries, without any need to list them in +/etc/ld.so.conf+.
 
 
 To get +glibc-libre+, place the _nix-shell_ script
