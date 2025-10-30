@@ -30,7 +30,7 @@ function stamp
 function print_usage
 {
     printf "Usage: ${program_name} BRANCH_OR_TAG\n"
-    printf "Usage: ${program_name} -- BRANCH_OR_TAG\n"
+    printf "       ${program_name} -- BRANCH_OR_TAG\n"
     printf "       ${program_name}\n"
     printf "       ${program_name} -r REVISION\n"
     printf "       ${program_name} --revision REVISION\n"
