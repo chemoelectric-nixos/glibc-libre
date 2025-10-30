@@ -4,7 +4,7 @@
 +/etc/ld.so.cache+ enabled.footnote:[Almost the only thing necessary
 is not to apply a _NixOS_ patch whose only purpose is to take caching
 away from you. Anyone can disable caching _for themself_ with +chmod
-a-x ldconfig+ but that move is inadequate to impose the disability on
+a-x ldconfig+, but that move is inadequate to impose the disability on
 everyone else.] *Glibc-libre* will also cache its own shared
 libraries, without any need to list them in +/etc/ld.so.conf+.
 
