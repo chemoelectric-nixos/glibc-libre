@@ -16,15 +16,15 @@ or
 ----
 ./update-glibc-libre -r 385bc60542f26c384d8fa17585e6447f1aa54fbf
 ----
-This will create a subdirectory called +glibc-libre+. If there is
+This will create a subdirectory called +glibc-libre+, and a depth-one
+_git_ repository at +/var/tmp/glibc-libre/nixpkgs+. If there is
 already a +glibc-libre+, the script will make a backup tarball called
 something like +glibc-libre.2025.10.29.13.27.45.tar.xz~+, where the
 numbers are a timestamp.
 
-In the subdirectory there should be a depth-one clone of some portion
-of the _nixpkgs_ repository. There should also be two _Nix_ scripts.
-Import the +libre-configuration.nix+ script with something like the
-following:
+In the subdirectory there should be a copy of _glibc_ package from the
+_git_ repository. There should also be two _Nix_ scripts. Import the
++libre-configuration.nix+ script with something like the following:
 [source,nix]
 ----
 imports = [
@@ -54,3 +54,16 @@ _NixOS_ has a way of putting an undesired executable ahead in your
 path, so persevere until you get it the way you want. Then become
 angry when it gets messed up again, but again fix it. Do not let
 Nixonian OS design stop you from fixing it.
+
+If you created your +/var/tmp/glibc-libre/nixpkgs+ repository with a
+command such as
+[source,sh]
+----
+./update-glibc-libre nixos-25.05
+----
+you can henceforth run simply
+[source,sh]
+----
+./update-glibc-libre
+----
+to bring your *glibc-libre* up to date.
