@@ -1,0 +1,90 @@
+#!/usr/bin/env nix-shell
+#! nix-shell -i zsh -p zsh gnutar xz git cacert coreutils gnused nixfmt-rfc-style --pure
+#
+# Copyright © 2025 Barry Schwartz
+#
+# This program is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License, as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received copies of the GNU General Public License
+# along with this program. If not, see
+# <https:#www.gnu.org/licenses/>.
+#
+
+set -e
+program_name="${0}"
+
+source glibc-libre-files/command-line.zsh
+source glibc-libre-files/helpers.zsh
+
+libxcrypt_subdir="pkgs/development/libraries/libxcrypt"
+libxcrypt_in_local_repo="${local_repo}/${libxcrypt_subdir}"
+libxcrypt_dir="glibc-libre/libxcrypt"
+abs_libxcrypt_dir=`realpath ${PWD}`/"${libxcrypt_dir}"
+
+function obtain_the_libxcrypt_derivation
+{
+    printf "Obtaining the libxcrypt derivation.\n"
+    require_the_local_repo
+    rm -R -f libxcrypt-with-static
+    mkdir -p "${abs_libxcrypt_dir}"
+    cp -R "${libxcrypt_in_local_repo}"/* "${abs_libxcrypt_dir}"
+}
+
+function edit_libxcrypt
+{
+    local defnix="${abs_libxcrypt_dir}/default.nix"
+
+    printf "Editing the derivation.\n"
+
+    # The only changes are in the name and that we want a static
+    # library instead of a shared library.
+
+    sed -i -E \
+        -e 's|pname[[:space:]]*=[[:space:]]*"libxcrypt"|pname="libxcrypt-static"|' \
+        -e 's|"--disable-failure-tokens"|"--disable-failure-tokens" "--enable-static" "--disable-shared"|' \
+        "${defnix}"
+
+    nixfmt "${defnix}"
+}
+
+function write_a_configuration
+{
+    printf "Writing a Nix configuration.\n"
+
+    the_file=glibc-libre/libxcrypt-static.nix
+
+    cat > "${the_file}" <<EOF
+{ pkgs, ... }:
+
+{
+  nixpkgs.overlays = [
+    (final: prev: {
+      libxcrypt-static = final.pkgs.callPackage ./libxcrypt { };
+    })
+  ];
+}
+EOF
+
+    nixfmt "${the_file}"
+}
+
+rm -R -f glibc-libre/libxcrypt
+obtain_the_libxcrypt_derivation
+edit_libxcrypt
+write_a_configuration
+printf "Done.\n"
+
+# local variables:
+# mode: shell-script
+# sh-shell: zsh
+# coding: utf-8
+# indent-tabs-mode: nil
+# end:

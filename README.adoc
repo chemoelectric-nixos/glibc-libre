@@ -1,4 +1,4 @@
-= glibc-libre
+= glibc-libre and other restorations of functionality
 
 *Glibc-libre* is your _NixOS_ *glibc*, but with +/etc/ld.so.conf+ and
 +/etc/ld.so.cache+ enabled.footnote:[Almost the only thing necessary
@@ -9,10 +9,10 @@ everyone else.] *Glibc-libre* will also cache its own shared
 libraries, without any need to list them in +/etc/ld.so.conf+.
 
 
-To get +glibc-libre+, place the _nix-shell_ script
-*update-glibc-libre* in your _Nix_ configuration directory (such as
-+/etc/nixos+) and make it executable. You can run it with a command like
-[source,sh]
+To get +glibc-libre+, place these scripts and the +glibc-helper-files+
+subdirectory in your _Nix_ configuration directory (such as
++/etc/nixos+). Make the scripts executable. You can run
++update-glibc-libre+ with a command like [source,sh]
 ----
 ./update-glibc-libre nixos-25.05
 ----
@@ -72,3 +72,27 @@ you can henceforth run simply
 ./update-glibc-libre
 ----
 to bring your *glibc-libre* up to date.
+
+***
+
+So what are the other scripts?
+
+They are for other NixOS packages you might wish to fix. The scripts
+for them are similar to those for *glibc-libre*, but I have not yet
+documented them as fully.
+
+So far there are:
+
+*update-libxcrypt-static*:: To build a static +libcrypt.a+, otherwise
+the same as the dynamic +libcrypt.so+.
+
+*update-doas-that-does*:: To build a _static_ *doas* executable that
+is _itself_ setuid root, rather than wrapped. The static executable
+can be copied freely and put on removable media. The new package also
+removes a NixOS patch that introduces a serious bug in the ‘safepath’.
+To use *update-doas-that-does*, you must also use
+*update-libxcrypt-static*.
+
+*update-restoration-of-functionality*:: To run the scripts that are
+ listed in the file *restoration-of-functionality*.
+ 

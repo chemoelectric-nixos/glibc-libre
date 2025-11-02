@@ -1,0 +1,201 @@
+#!/usr/bin/env nix-shell
+#! nix-shell -i zsh -p zsh gnutar xz git cacert coreutils gawk gnused patch nixfmt-rfc-style --pure
+#
+# Copyright © 2025 Barry Schwartz
+#
+# This program is free software: you can redistribute it and/or
+# modify it under the terms of the GNU General Public License, as
+# published by the Free Software Foundation, either version 3 of the
+# License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received copies of the GNU General Public License
+# along with this program. If not, see
+# <https:#www.gnu.org/licenses/>.
+#
+
+#
+# This script is for a doas that uses shadow passwords only, ignoring
+# PAM. Avoiding PAM means less configuration—although doas has a Yacc
+# parser, which is more than is necessary. (See qmail for
+# configuration made more secure by avoiding parsing.)
+#
+# Because the doas is linked only with libxcrypt, it can be linked
+# with a STATIC libxcrypt and a STATIC libc, and thus made a STATIC
+# executable. The resulting executable can be made setuid root and put
+# on a floppy disk or other media for emergency use. It can be copied
+# anywhere you like, and will work as long as you keep it setuid root,
+# and give it access to its /etc/doas.conf configuration file and the
+# resources needed by libxcrypt.
+#
+# This doas also fixes the order of the safepath. In the stock NixOS
+# doas (as of 2025-11-02) a patch is applied that results in, for
+# instance, ‘doas emacs’ not working. We nix the patch and instead
+# edit the safepath ourselves.
+#
+
+set -e
+program_name="${0}"
+
+source glibc-libre-files/command-line.zsh
+source glibc-libre-files/helpers.zsh
+
+doas_subdir="pkgs/by-name/do/doas"
+doas_in_local_repo="${local_repo}/${doas_subdir}"
+doas_dir="glibc-libre/doas"
+abs_doas_dir=`realpath ${PWD}`/"${doas_dir}"
+
+function obtain_the_doas_derivation
+{
+    printf "Obtaining the doas derivation.\n"
+    require_the_local_repo
+    mkdir -p "${abs_doas_dir}"
+    cp -R "${doas_in_local_repo}"/* "${abs_doas_dir}"
+}
+
+function edit_doas
+{
+    local pknix="${abs_doas_dir}/package.nix"
+
+    printf "Editing the derivation.\n"
+
+    #
+    # In my experience in the early 1990s, Berkeley Yacc was MUCH
+    # better than Bison, so the following sed scripting replaces bison
+    # with byacc.
+    #
+    # The person who wrote Berkeley Yacc had earlier been the
+    # principal author of Bison, so you are getting the results of
+    # lessons learned. I found, for instance, that Bison was not as
+    # good at locating syntax errors, which I imagine was not
+    # anticipated when deviating from the behaviors of the original
+    # Yacc. Neither Berkeley Yacc nor MKS Yacc had this problem, for
+    # the project I was working on all those years ago.
+    #
+    # I prefer to install Berkeley Yacc, not Bison, as my ‘yacc’
+    # command. Of course now one can also obtain an ‘heirloom’ Yacc,
+    # but Berkeley Yacc is a better implementation of the same thing.
+    #
+    # (This is not quite true of lex and flex. But in that old project
+    # I used neither. I used gperf.)
+    #
+
+    sed -i -E \
+        -e '1a\pkgs,' \
+        -e '/\.\/0001-add-NixOS-specific-dirs-to-safe-PATH\.patch/d' \
+        -e '/^[[:space:]]*pam,[[:space:]]*$/d' \
+        -e '/^[[:space:]]*withPAM[[:space:]]*[?]/d' \
+        -e 's|bison|byacc|g' \
+        -e 's|^.*"--without-pam".*$|"--without-pam" "--with-shadow"|' \
+        -e '/withPAM && stdenv.hostPlatform\.isStatic/i'"+\\''" \
+        -e '/withPAM && stdenv.hostPlatform\.isStatic/d' \
+        -e '/s\/-lpam\/-lpam -laudit\//d' \
+        -e 's|buildInputs[[:space:]]*=.*$|buildInputs = [ pkgs.libxcrypt-static pkgs.glibc.static ];|' \
+        "${pknix}"
+
+    awk_edit '/postPatch[[:space:]]*=/ {
+
+                printf ("preConfigure = \047\047\n")
+                # Construct our own linker script to serve as -lc
+                printf ("echo \047GROUP ( ${pkgs.libxcrypt-static}/lib/libcrypt.a ${pkgs.glibc.static}/lib/libc.a )\047")
+                printf (" > libc.so\n")
+                printf ("export LIBRARY_PATH=`realpath .`\n")
+                 # Compile as a static executable.
+                printf ("export CFLAGS=\047-static\047\n")
+                printf ("\047\047;\n\n")
+
+                printf ("prePatch = \047\047\n")
+                # Fix the safepath.
+                printf ("sed -i -E ")
+                printf ("\047/^[[:space:]]*const[[:space:]]+char[[:space:]]+\\*/s|safepath[[:space:]]*=|")
+                printf ("safepath = \"/run/wrappers/bin:/run/current-system/sw/bin:/run/current-system/sw/sbin:\" |\047 ")
+                printf ("doas.c\n")
+                printf ("\047\047;\n\n")
+
+              }
+              {
+                print
+              }
+             ' "${pknix}"
+
+    nixfmt "${pknix}"
+}
+
+function write_a_configuration
+{
+    printf "Writing a Nix configuration.\n"
+
+    the_file=glibc-libre/doas-that-does.nix
+
+    cat > "${the_file}" <<EOF
+{ pkgs, ... }:
+
+{
+  nixpkgs.overlays = [
+    (final: prev: {
+      does = final.pkgs.callPackage ./doas/package.nix { };
+    })
+  ];
+
+  system.replaceDependencies.replacements = [
+    {
+      oldDependency = pkgs.doas;
+      newDependency = pkgs.does;
+    }
+  ];
+
+  # Install the static executable setuid root.
+  environment.etc."doas.bin/doas" = {
+    user = "root";
+    group = "root";
+    mode = "4755";
+    source = "\${pkgs.doas}/bin/doas";
+  };
+}
+EOF
+
+    nixfmt "${the_file}"
+}
+
+function write_an_example_doas_config
+{
+    printf "Writing an example doas configuration.\n"
+
+    the_file=glibc-libre/doas-configuration.example.nix
+
+    cat > "${the_file}" <<EOF
+{ ... }:
+
+{
+  environment.etc."doas.conf" = {
+    mode = "400";
+    text = ''
+      permit nopass setenv { SSH_AUTH_SOCK TERMINFO TERMINFO_DIRS } :wheel
+
+      # "root" is allowed to do anything.
+      permit nopass keepenv root
+    '';
+  };
+}
+EOF
+
+    nixfmt "${the_file}"
+}
+
+rm -R -f glibc-libre/doas
+obtain_the_doas_derivation
+edit_doas
+write_a_configuration
+write_an_example_doas_config
+printf "Done. Put /etc/doas.bin near the beginning of your PATH.\n"
+
+# local variables:
+# mode: shell-script
+# sh-shell: zsh
+# coding: utf-8
+# indent-tabs-mode: nil
+# end:

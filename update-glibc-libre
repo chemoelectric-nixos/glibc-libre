@@ -19,120 +19,22 @@
 #
 
 set -e
-
 program_name="${0}"
 
-function stamp
-{
-    date +%Y.%m.%d.%H.%M.%S
-}
+source glibc-libre-files/command-line.zsh
+source glibc-libre-files/helpers.zsh
 
-function print_usage
-{
-    printf "Usage: ${program_name} BRANCH_OR_TAG\n"
-    printf "       ${program_name} -- BRANCH_OR_TAG\n"
-    printf "       ${program_name}\n"
-    printf "       ${program_name} -r REVISION\n"
-    printf "       ${program_name} --revision REVISION\n"
-    printf "       ${program_name} -h\n"
-    printf "       ${program_name} --help\n"
-    printf "\n"
-    printf "The first and second form check out by branch or\n"
-    printf "tag. The third form updates an existing repository’s\n"
-    printf "current branch. The fourth and fifth forms check\n"
-    printf "out a particular commit, given its hash. The -h\n"
-    printf "and --help options print this message.\n"
-}
-
-branch=
-revision=
-if [[ "${1}" = "-h" ]] || [[ "${1}" = "--help" ]]; then
-   print_usage
-   exit 0
-elif [[ 3 -le $# ]]; then
-    print_usage
-    exit 1
-elif [[ $# = 1 ]]; then
-    branch="${1:?branch or tag not specified}"
-elif [[ $# = 0 ]]; then
-    :
-elif [[ "${1}" = "--" ]]; then
-    branch="${2:?branch or tag not specified}"
-elif [[ "${1}" = "-r" ]] || [[ "${1}" = "--revision" ]] ; then
-    revision="${2:?revision not specified}"
-else
-    print_usage
-    exit 1
-fi
-
-function want_repo_pull
-{
-    test -z "${branch}${revision}"
-}
-
-local_repo="/var/tmp/glibc-libre/nixpkgs"
-nixpkgs_url="https://github.com/NixOS/nixpkgs.git"
 glibc_subdir="pkgs/development/libraries/glibc"
 glibc_in_local_repo="${local_repo}/${glibc_subdir}"
 glibc_dir="glibc-libre/glibc"
 abs_glibc_dir=`realpath ${PWD}`/"${glibc_dir}"
 
-function local_repo_specifier
-{
-    if [[ -n "${branch}" ]]; then
-        printf "--branch=%s" "${branch}"
-    else
-        printf "--revision=%s" "${revision}"
-    fi
-}
-
-function clone_the_local_repo
-{
-    local dirnm=`dirname "${local_repo}"`
-    local basnm=`basename "${local_repo}"`
-    local spec=`local_repo_specifier`
-
-    mkdir -p "${dirnm}"
-    (cd "${dirnm}" &&
-         git clone --depth=1 "${spec}" "${nixpkgs_url}" "${basnm}")
-}
-
-function update_the_local_repo
-{
-    (cd "${local_repo}" && git pull --depth=1)
-}
-
-function require_the_local_repo
-{
-    if ! want_repo_pull; then
-        rm -R -f "${local_repo}"
-        clone_the_local_repo
-    elif [[ -d "${local_repo}" ]]; then
-        update_the_local_repo
-    else
-        print_usage
-        exit 1
-    fi
-}
-
 function obtain_the_glibc_derivation
 {
+    printf "Obtaining the glibc derivation.\n"
     require_the_local_repo
     mkdir -p "${abs_glibc_dir}"
     cp -R "${glibc_in_local_repo}"/* "${abs_glibc_dir}"
-}
-
-function make_a_backup
-{
-    if [[ -d glibc-libre ]]; then
-        tarball=glibc-libre.`stamp`.tar.xz~
-        tar --format=posix --acls --xattrs -czf "${tarball}" glibc-libre
-    fi
-}
-
-function awk_edit
-{
-    nawk "${1}" < "${2}" > "${2}".tmp && mv "${2}"{.tmp,}
 }
 
 function disable_nixonian_patch
@@ -178,6 +80,7 @@ function install_ldconfig_for_sure
 
 function edit_for_freedom
 {
+    printf "Editing the derivation.\n"
     disable_nixonian_patch
     install_ldconfig_for_sure
     nixfmt "${abs_glibc_dir}"/common.nix
@@ -272,18 +175,13 @@ function write_example_etc_config
     nixfmt "${config}"
 }
 
-printf "Backing up the previous version.\n"
-make_a_backup
+printf "Updating glibc-libre...\n"
 
-printf "Obtaining the glibc derivation.\n"
-printf "Local repository at %s\n" "${local_repo}"
-rm -R -f glibc-libre
+rm -R -f glibc-libre/glibc
 obtain_the_glibc_derivation
-
-printf "Editing for glibc-libre.\n"
 edit_for_freedom
 
-printf "Writing Nix configuration.\n"
+printf "Writing Nix configurations.\n"
 write_nix_configuration "glibc-libre/libre-configuration.nix"
 write_example_etc_config "glibc-libre/libre-etc-config.example.nix"
 
