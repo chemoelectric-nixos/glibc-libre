@@ -22,10 +22,7 @@ or
 ./update-glibc-libre -r 385bc60542f26c384d8fa17585e6447f1aa54fbf
 ----
 This will create a subdirectory called +glibc-libre+, and a depth-one
-_git_ repository at +/var/tmp/glibc-libre/nixpkgs+. If there is
-already a +glibc-libre+, the script will make a backup tarball called
-something like +glibc-libre.2025.10.29.13.27.45.tar.xz~+, where the
-numbers are a timestamp.
+_git_ repository at +/var/tmp/glibc-libre/nixpkgs+.
 
 In the subdirectory there should be a copy of _glibc_ package from the
 _git_ repository. There should also be two _Nix_ scripts. Import the
